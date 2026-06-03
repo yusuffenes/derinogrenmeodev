@@ -14,10 +14,10 @@ def main():
     parser = argparse.ArgumentParser(description="Bitki Hastaligi Siniflandirma CNN Pipeline")
     
     parser.add_argument('--preprocess', action='store_true', help='Veri kumesini on islemden gecir ve kirp')
-    parser.add_argument('--optimize', action='store_true', help='Optuna ile hiperparametre optimizasyonu gerceklestir')
-    parser.add_argument('--trials', type=int, default=5, help='Optuna deneme sayisi (varsayilan: 5)')
+    parser.add_argument('--optimize', action='store_true', help='Eski Optuna akisi pasif tutulur; yeni onerilen akista kullanilmaz')
+    parser.add_argument('--trials', type=int, default=5, help=argparse.SUPPRESS)
     parser.add_argument('--train', action='store_true', help='Modeli egit')
-    parser.add_argument('--model', type=str, default='resnet18', 
+    parser.add_argument('--model', type=str, default='resnet34', 
                         choices=['custom_cnn', 'resnet18', 'resnet34', 'resnet50', 'efficientnet_b0', 'mobilenet_v3_large'], 
                         help='Egitilecek model mimarisi')
     parser.add_argument('--epochs', type=int, default=config.EPOCHS, help='Egitim epoch sayisi')
@@ -25,9 +25,11 @@ def main():
     parser.add_argument('--batch_size', type=int, default=config.BATCH_SIZE, help='Veri grubu boyutu (batch size)')
     parser.add_argument('--optimizer', type=str, default='AdamW', choices=['AdamW', 'SGD'], help='Optimizasyon algoritmasi')
     parser.add_argument('--freeze_backbone', action='store_true', help='Govdeyi dondur (sadece siniflandiriciyi egit)')
-    parser.add_argument('--fine_tune', action='store_true', help='Iki asamali egitim gerceklestir (Ozellik Cikarimi + Ince Ayar)')
+    parser.add_argument('--fine_tune', action='store_true', default=True, help='Iki asamali egitim gerceklestir (varsayilan)')
+    parser.add_argument('--single_stage', action='store_true', help='Iki asamali egitim yerine tek asamali egitim yap')
     parser.add_argument('--no_class_weights', action='store_true', help='Sinif agirliklarini kullanma (dengesiz veri seti icin)')
     parser.add_argument('--evaluate', action='store_true', help='En iyi modeli test seti uzerinde degerlendir')
+    parser.add_argument('--audit_data', action='store_true', help='PlantDoc veri seti klasorlerini, etiketleri ve sinif dagilimini denetle')
     
     args = parser.parse_args()
     
@@ -45,19 +47,17 @@ def main():
         plot_class_distribution(counts, classes, plot_path)
         print("On isleme basariyla tamamlandi!")
         
+    if args.single_stage:
+        args.fine_tune = False
+
+    if args.audit_data:
+        print("\n=== [Veri Denetimi] PlantDoc Dosya ve Etiket Kontrolu ===")
+        from src.data_audit import audit_dataset
+        audit_dataset(config.DATA_DIR, config.PROCESSED_DIR, config.PLOT_DIR)
+
     # 2. Asama: Hiperparametre Optimizasyonu (Optuna)
-    best_params = {}
     if args.optimize:
-        print(f"\n=== [2. Asama] Hiperparametre Optimizasyonu ({args.trials} Deneme) ===")
-        from src.optimize import run_optimization
-        best_params = run_optimization(n_trials=args.trials)
-        
-        # En iyi parametreleri konfigurasyona aktar
-        args.lr = best_params.get('lr', args.lr)
-        args.batch_size = best_params.get('batch_size', args.batch_size)
-        args.model = best_params.get('model_type', args.model)
-        args.optimizer = best_params.get('optimizer', args.optimizer)
-        print(f"Optimizasyondan secilen en iyi model: {args.model}, Batch Size: {args.batch_size}, LR: {args.lr:.6f}, Optimizer: {args.optimizer}")
+        print("\n[Bilgi] Optuna akisi bu surumde atlandi. Onerilen komut: python main.py --preprocess --audit_data --train --evaluate")
         
     # 3. Asama: Model Egitimi (Training)
     if args.train:
@@ -89,7 +89,7 @@ def main():
             # Transfer Ogrenme Modeli
             if args.fine_tune:
                 print("\n>>> ASAMA 1: Ozellik Cikarimi (Feature Extraction) - Govde Donduruldu")
-                model = get_transfer_model(num_classes=num_classes, pretrained=True, freeze_backbone=True, backbone=args.model)
+                model = get_transfer_model(num_classes=num_classes, pretrained=True, freeze_backbone=True, backbone=args.model, dropout_rate=config.DROPOUT)
                 save_path_stage1 = os.path.join(config.CHECKPOINT_DIR, f'best_{args.model}_stage1.pth')
                 
                 # Siniflandirici egitimi icin 5 epoch yeterlidir
@@ -140,7 +140,7 @@ def main():
                 # Normal tek asamali egitim (kullanici isterse --freeze_backbone gecebilir)
                 freeze = args.freeze_backbone
                 print(f"Tek Asamali Egitim | Govde Dondurulmus mu: {freeze}")
-                model = get_transfer_model(num_classes=num_classes, pretrained=True, freeze_backbone=freeze, backbone=args.model)
+                model = get_transfer_model(num_classes=num_classes, pretrained=True, freeze_backbone=freeze, backbone=args.model, dropout_rate=config.DROPOUT)
                 save_path = os.path.join(config.CHECKPOINT_DIR, f'best_{args.model}.pth')
                 
                 history = run_training(
@@ -174,7 +174,7 @@ def main():
         if args.model == 'custom_cnn':
             model = PlantCNN(num_classes=num_classes)
         else:
-            model = get_transfer_model(num_classes=num_classes, pretrained=False, backbone=args.model)
+            model = get_transfer_model(num_classes=num_classes, pretrained=False, backbone=args.model, dropout_rate=config.DROPOUT)
             
         checkpoint_path = os.path.join(config.CHECKPOINT_DIR, f'best_{args.model}.pth')
         

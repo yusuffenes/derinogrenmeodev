@@ -51,16 +51,19 @@ def get_transforms(image_size=config.IMAGE_SIZE):
     Aşırı öğrenmeyi (overfitting) engellemek amacıyla eğitim setine veri artırma uygulanır.
     """
     train_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
+        transforms.RandomResizedCrop(image_size, scale=(0.75, 1.0), ratio=(0.9, 1.1)),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomVerticalFlip(p=0.2),
-        transforms.RandomRotation(degrees=15),
+        transforms.RandomRotation(degrees=20),
+        transforms.RandomAffine(degrees=0, translate=(0.05, 0.05), scale=(0.95, 1.05)),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandomAutocontrast(p=0.2),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225]
-        )
+        ),
+        transforms.RandomErasing(p=0.15, scale=(0.02, 0.08), ratio=(0.3, 3.3))
     ])
     
     val_test_transform = transforms.Compose([
@@ -96,13 +99,15 @@ def get_dataloaders(batch_size=config.BATCH_SIZE, image_size=config.IMAGE_SIZE):
     test_dataset = PlantLeafDataset(test_dir, classes, transform=val_test_transform)
     
     num_workers = 2 if os.name == 'nt' else 4
+    persistent_workers = num_workers > 0
     
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=persistent_workers
     )
     
     val_loader = DataLoader(
@@ -110,7 +115,8 @@ def get_dataloaders(batch_size=config.BATCH_SIZE, image_size=config.IMAGE_SIZE):
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=persistent_workers
     )
     
     test_loader = DataLoader(
@@ -118,7 +124,8 @@ def get_dataloaders(batch_size=config.BATCH_SIZE, image_size=config.IMAGE_SIZE):
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=persistent_workers
     )
     
     return train_loader, val_loader, test_loader, classes

@@ -1,3 +1,5 @@
 /.venv
 data
 data_processed
+__pycache__/
+*.py[cod]

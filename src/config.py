@@ -11,17 +11,17 @@ PLOT_DIR = os.path.join(BASE_DIR, 'plots')
 for path in [CHECKPOINT_DIR, PLOT_DIR]:
     os.makedirs(path, exist_ok=True)
 
-# Hiperparametreler (Başlangıç değerleri, Optuna ile optimize edilebilir)
+# ResNet tabanlı transfer öğrenme için güçlü başlangıç değerleri
 IMAGE_SIZE = 224
 BATCH_SIZE = 32
-EPOCHS = 15
-LEARNING_RATE = 1e-4
+EPOCHS = 20
+LEARNING_RATE = 3e-4
 WEIGHT_DECAY = 1e-4
 DROPOUT = 0.3
 NUM_CLASSES = 30
 
 # İki Aşamalı Transfer Öğrenme Parametreleri
-FINE_TUNE_EPOCHS = 10         # İkinci aşama (fine-tuning) epoch sayısı
+FINE_TUNE_EPOCHS = 15         # İkinci aşama (fine-tuning) epoch sayısı
 FINE_TUNE_LR_FACTOR = 0.1     # Fine-tuning aşamasında öğrenme oranı çarpanı (örn: lr * 0.1)
 
 

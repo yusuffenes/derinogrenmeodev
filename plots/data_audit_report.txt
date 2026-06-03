@@ -1,0 +1,27 @@
+PlantDoc Veri Denetimi
+======================
+
+Sinif sayisi: 30
+data.yaml nc: 30
+Yerel metadata kaynagi: Roboflow Universe / plantdoc v1
+URL: https://universe.roboflow.com/joseph-nelson/plantdoc/dataset/1
+
+Ham YOLO split ozeti:
+- train: 1979 image, 1979 label, 0 eksik label, 0 sahipsiz label
+- valid: 349 image, 349 label, 0 eksik label, 0 sahipsiz label
+- test: 239 image, 239 label, 0 eksik label, 0 sahipsiz label
+
+Etiket kontrolu:
+- Gecersiz/uyumsuz satir: 0
+
+Kirilmis goruntu toplamlar:
+- train: 7065 goruntu, bos sinif sayisi: 0
+- val: 1256 goruntu, bos sinif sayisi: 3
+  Bos siniflar: Potato leaf early blight, Soybean leaf, Tomato two spotted spider mites leaf
+- test: 454 goruntu, bos sinif sayisi: 3
+  Bos siniflar: Potato leaf early blight, Soybean leaf, Tomato two spotted spider mites leaf
+
+Raw label toplamlar:
+- train: 7096 kutu
+- valid: 1257 kutu
+- test: 454 kutu

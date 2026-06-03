@@ -78,7 +78,7 @@ def crop_and_save_dataset(data_dir, output_dir, classes):
                         xmin = max(0, int(x_center_px - w_px / 2))
                         ymin = max(0, int(y_center_px - h_px / 2))
                         xmax = min(img_w, int(x_center_px + w_px / 2))
-                        ymax = min(img_h, int(x_center_px + h_px / 2))
+                        ymax = min(img_h, int(y_center_px + h_px / 2))
                         
                         # Çok küçük veya geçersiz kırpıntıları atla (gürültüyü önlemek için)
                         if (xmax - xmin) < 15 or (ymax - ymin) < 15:

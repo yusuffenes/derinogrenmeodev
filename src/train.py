@@ -4,7 +4,7 @@ import torch.nn as nn
 from tqdm import tqdm
 from src import config
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device):
+def train_one_epoch(model, dataloader, criterion, optimizer, device, grad_clip=1.0):
     """
     Modeli bir epoch boyunca eğitir.
     Eğitim kaybını (loss) ve eğitim doğruluğunu (accuracy) döner.
@@ -27,6 +27,8 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         
         # Geri yayılım (backward pass) ve optimizasyon
         loss.backward()
+        if grad_clip is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
         optimizer.step()
         
         # İstatistikleri hesapla
@@ -35,8 +37,8 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         total += labels.size(0)
         correct += predicted.eq(labels).sum().item()
         
-    epoch_loss = running_loss / total
-    epoch_acc = correct / total
+    epoch_loss = running_loss / total if total > 0 else 0.0
+    epoch_acc = correct / total if total > 0 else 0.0
     return epoch_loss, epoch_acc
 
 def validate(model, dataloader, criterion, device):
@@ -62,14 +64,14 @@ def validate(model, dataloader, criterion, device):
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
             
-    epoch_loss = running_loss / total
-    epoch_acc = correct / total
+    epoch_loss = running_loss / total if total > 0 else 0.0
+    epoch_acc = correct / total if total > 0 else 0.0
     return epoch_loss, epoch_acc
 
 def run_training(model, train_loader, val_loader, epochs=config.EPOCHS, 
                  lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY,
                  device=config.DEVICE, save_path=None, optimizer_name='AdamW',
-                 early_stopping_patience=10, use_class_weights=True):
+                 early_stopping_patience=10, use_class_weights=True, label_smoothing=0.05):
     """
     Belirtilen parametrelerle tam eğitim sürecini yürütür.
     En iyi doğrulama başarımına sahip modeli kaydeder.
@@ -89,17 +91,21 @@ def run_training(model, train_loader, val_loader, epochs=config.EPOCHS,
         # Ağırlık = Toplam Örnek / (Sınıf Sayısı * Sınıf Başına Örnek Sayısı)
         weights = sum(class_counts) / (len(class_counts) * class_counts)
         class_weights = torch.FloatTensor(weights).to(device)
-        criterion = nn.CrossEntropyLoss(weight=class_weights)
+        criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing)
         print(f" => Sinif dengesizligi icin agirlikli CrossEntropyLoss kullaniliyor.")
     else:
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         print(f" => Standart CrossEntropyLoss kullaniliyor.")
     
     # Seçilen optimizasyon algoritmasını tanımla
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    if not trainable_params:
+        raise ValueError("Egitilebilir model parametresi bulunamadi. freeze_backbone ayarini kontrol edin.")
+    
     if optimizer_name == 'AdamW':
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
     else:
-        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay)
+        optimizer = torch.optim.SGD(trainable_params, lr=lr, momentum=0.9, weight_decay=weight_decay)
     
     # Doğrulama kaybına göre öğrenme oranını düşüren scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -174,4 +180,3 @@ if __name__ == '__main__':
         save_path=test_save_path
     )
     print("Egitim modulu basariyla dogrulandi!")
-

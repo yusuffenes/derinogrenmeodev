@@ -1,111 +1,153 @@
 # Derin Öğrenme Dersi - Bitki Yaprağı Hastalığı Sınıflandırma Projesi
 
 **Hazırlayan:** Yusuf Enes Budak  
-**Ders:** Derin Öğrenme (Deep Learning) Proje Ödevi  
+**Konu:** PlantDoc veri seti ile bitki yaprağı hastalığı sınıflandırma
 
 ---
 
-## 📌 Giriş ve Proje Amacı
-Bu proje, tarımsal verimliliği artırmak ve bitki hastalıklarını erken aşamada teşhis etmek amacıyla, bitki yaprak görüntülerinden hastalık tespiti yapan bir uçtan uca derin öğrenme hattı (pipeline) sunmaktadır. Proje kapsamında 30 farklı bitki sınıfı (sağlıklı yapraklar ve çeşitli yaprak hastalıkları) sınıflandırılmaktadır.
+## Projenin Amacı
 
-Proje süresince sırasıyla **Özel CNN (Custom CNN)** tasarımı yapılmış, ardından başarımın artırılması için **Transfer Öğrenme (Transfer Learning)** mimarilerine geçilmiş ve karşılaşılan teknik zorluklar (overfitting, veri dengesizliği vb.) sistematik yöntemlerle çözülmüştür.
+Bu proje, bitki yaprağı görüntülerinden 30 farklı sınıfı tanımaya çalışan bir derin öğrenme hattıdır. İlk sürümde özel CNN, transfer öğrenme ve Optuna denemeleri birlikte kullanılmıştı. Yeni sürümde Optuna süreci ana akıştan çıkarıldı; veri seti doğrulandı, kırpma hatası düzeltildi ve transfer öğrenme odaklı daha sade bir eğitim/değerlendirme yapısı kuruldu.
+
+Final pratik öneri: **EfficientNet-B0 checkpointi**, düzeltilmiş test setinde **%52.42 test doğruluğu** verdiği için bu veri üzerinde ResNet34 denemesinden daha iyi sonuç verdi.
 
 ---
 
-## 📸 Proje Görselleri ve Analizleri
+## Veri Seti Kontrolü
 
-Eğitim ve değerlendirme süreçlerinde elde edilen çıktılar grafikler halinde kaydedilmektedir:
+Yerel dosyalardaki `data.yaml` ve README metadata bilgilerine göre veri seti **PlantDoc Roboflow Universe v1** exportudur:
 
-### 1. Sınıf Dağılım Grafiği (`plots/class_distribution.png`)
-Veri kümesindeki sınıfların train/val/test dağılımı ve yaprak sayıları:
-![Veri Seti Sınıf Dağılımı](plots/class_distribution.png)
+- Kaynak metadata: `https://universe.roboflow.com/joseph-nelson/plantdoc/dataset/1`
+- Sınıf sayısı: 30
+- Ham görüntü sayısı: train 1979, valid 349, test 239
+- Ham label dosyaları: train 1979, valid 349, test 239
+- Eksik label: 0
+- Sahipsiz label: 0
+- Geçersiz YOLO satırı: 0
 
-### 2. Eğitim ve Doğrulama Eğrileri (`plots/training_curves_efficientnet_b0.png`)
-İki aşamalı Transfer Öğrenme eğitiminde elde edilen kayıp (loss) ve doğruluk (accuracy) değerleri (Dikey kırmızı kesikli çizgi ince ayar aşamasının başlangıcını gösterir):
-![Eğitim Eğrileri](plots/training_curves_efficientnet_b0.png)
+Not: Projede yerel olarak Kaggle metadata dosyası bulunmuyor. Bu yüzden “Kaggle’dan indirildi” bilgisi dosyalardan doğrulanamıyor; mevcut kanıt veri setinin Roboflow PlantDoc exportu olduğunu gösteriyor.
 
-### 3. Optuna Hiperparametre Optimizasyonu Geçmişi (`plots/optuna_optimization_history.png`)
-Model parametrelerini optimize etmek için Optuna ile yapılan denemelerin başarı oranları:
-![Optuna Optimizasyon Geçmişi](plots/optuna_optimization_history.png)
+Kırpma sonrası oluşan görüntü sayıları:
 
-### 4. Test Seti Tahmin Örnekleri (`plots/prediction_samples.png`)
-Modelin test seti görüntülerindeki tahmin başarısı (Doğru tahminler **Yeşil**, hatalı tahminler **Kırmızı**):
-![Test Tahmin Örnekleri](plots/prediction_samples.png)
+- train: 7065 kırpılmış görüntü
+- val: 1256 kırpılmış görüntü
+- test: 454 kırpılmış görüntü
 
-### 5. Hata Matrisi (`plots/confusion_matrix.png`)
-Sınıfların birbiriyle karışma oranlarını ve detaylı sınıflandırma performansını gösteren Hata Matrisi (Confusion Matrix):
+Val/test içinde 3 sınıfta örnek yok: `Potato leaf early blight`, `Soybean leaf`, `Tomato two spotted spider mites leaf`. Bu nedenle bu sınıfların test metrikleri 0 destekli görünüyor ve macro ortalamayı aşağı çekiyor.
+
+![Veri Denetim Dağılımı](plots/data_audit_processed_distribution.png)
+
+---
+
+## En Önemli Düzeltme
+
+Ön işleme kodunda YOLO kutularını kırparken `ymax` hesabında yanlış eksen kullanılıyordu:
+
+```python
+ymax = min(img_h, int(y_center_px + h_px / 2))
+```
+
+Önceki sürümde `y_center_px` yerine `x_center_px` kullanıldığı için bazı yaprak kırpıntıları dikey eksende hatalı oluşabiliyordu. Bu hata düzeltildi ve veri yeniden kırpıldı. Bu düzeltmeden sonra test kırpıntı sayısı 412 yerine 454 oldu; bu yüzden eski ve yeni skorlar birebir aynı test kümesiyle kıyaslanmamalıdır.
+
+---
+
+## Model Deneyleri ve Sonuçlar
+
+| Deney | Veri durumu | Test doğruluğu | Not |
+|---|---:|---:|---|
+| Eski EfficientNet-B0 raporu | Eski kırpma | %52.18 | Önceki rapordaki sonuç |
+| Yeni ResNet34 | Düzeltilmiş kırpma | %47.36 | İki aşamalı fine-tuning yapıldı |
+| Final EfficientNet-B0 | Düzeltilmiş kırpma | **%52.42** | En iyi pratik sonuç |
+
+![Model Karşılaştırması](plots/model_comparison.png)
+
+ResNet34 denemesi beklenen artışı sağlamadı. Buna rağmen proje için faydalı oldu; çünkü düzeltilmiş veriyle daha doğru bir test seti üzerinde denenmiş oldu. Final kullanımda EfficientNet-B0 daha dengeli sonuç verdi.
+
+![ResNet34 Eğitim Eğrileri](plots/training_curves_resnet34.png)
+
+---
+
+## Yeni Akışta Yapılan Değişiklikler
+
+- Optuna ana eğitim akışından çıkarıldı; `--optimize` artık sadece bilgilendirme mesajı verir.
+- Varsayılan model `resnet34` yapıldı, fakat final raporda en iyi sonuç veren `efficientnet_b0` önerildi.
+- İki aşamalı transfer öğrenme varsayılan hale getirildi.
+- ResNet sınıflandırıcı başlığına dropout eklendi.
+- Eğitimde class-weighted CrossEntropyLoss, label smoothing ve gradient clipping kullanıldı.
+- Eğitim veri artırma güçlendirildi: RandomResizedCrop, RandomAffine, RandomAutocontrast ve RandomErasing eklendi.
+- Veri denetimi için `--audit_data` seçeneği ve `src/data_audit.py` eklendi.
+- Yeni görseller üretildi: veri denetimi, ResNet34 eğitim eğrisi, model karşılaştırması, confusion matrix ve tahmin örnekleri.
+
+---
+
+## Güncel Görseller
+
+Sınıf dağılımı:
+
+![Sınıf Dağılımı](plots/class_distribution.png)
+
+Model karşılaştırması:
+
+![Model Karşılaştırması](plots/model_comparison.png)
+
+Hata matrisi:
+
 ![Hata Matrisi](plots/confusion_matrix.png)
 
----
+Test tahmin örnekleri:
 
-## 🛠️ Model Geliştirme Aşamaları ve Deneyler
-
-### 1. Aşama: Özel CNN Modeli (`PlantCNN`)
-* **Yaklaşım:** Projeye ilk olarak sıfırdan tasarlanan özel bir Evrişimsel Sinir Ağı (CNN) mimarisi ile başlanmıştır.
-* **Mimari Yapı:** 4 evrişim bloğu (Conv2d + BatchNorm2d + ReLU + MaxPool2d), veri boyutlarını sabitlemek için AdaptiveAvgPool2d ve ardışık Dropout katmanı içeren tam bağlantılı (Fully Connected) bir sınıflandırıcı kafadan oluşmaktadır.
-* **Sonuç:** Özel CNN modeli küçük veri setlerinde çalışırken sınıflandırmada zorlanmış, doğrulama doğruluğu belirli bir seviyenin üzerine çıkamamış ve hızlı bir şekilde aşırı öğrenme (overfitting) eğilimi göstermiştir.
-
-### 2. Aşama: Transfer Öğrenme (Transfer Learning) Entegrasyonu
-Özel CNN modelinin genelleştirme yeteneğinin sınırlı kalması nedeniyle, ImageNet üzerinde önceden eğitilmiş (pretrained) modern derin öğrenme mimarilerine geçiş yapılmıştır. Projeye entegre edilen modeller:
-* **ResNet Ailesi (`resnet18`, `resnet34`, `resnet50`):** Derin artık (residual) bağlantılar içerir.
-* **EfficientNet-B0 (`efficientnet_b0`):** Parametre verimliliği ve doğruluk oranı en dengeli olan modern mimaridir (Önerilen).
-* **MobileNet-V3 Large (`mobilenet_v3_large`):** CPU performansı optimize edilmiş, son derece hızlı ve hafif mimaridir.
+![Tahmin Örnekleri](plots/prediction_samples.png)
 
 ---
 
-## ⚠️ Validation (Doğrulama) Doğruluğunun Tıkanma Nedenleri ve Çözümler
+## Kurulum
 
-Eğitimler sırasında doğrulama doğruluğunun (validation accuracy) yaklaşık %59 civarında tıkanarak ilerlememesi üzerine derinlemesine bir analiz yapılmış ve şu teknik çözümler geliştirilmiştir:
+Windows sanal ortamı kullanılıyorsa:
 
-### Sorun 1: Aşırı Sınıf Dengesizliği (Class Imbalance)
-* **Analiz:** Veri kümesi sınıf dağılımı son derece dengesizdir. Bazı sınıflarda (örn. *Corn Gray leaf spot*) sadece **2 adet** eğitim görüntüsü varken, bazılarında **462 adet** görüntü bulunmaktadır. Standart CrossEntropyLoss, az verisi olan sınıfları görmezden gelerek modeli çoğunluk sınıflarına yöneltmektedir.
-* **Çözüm:** Sınıf frekansları hesaplanarak sınıf ağırlıklı CrossEntropyLoss (`class-weighted loss`) entegre edilmiştir. Az verisi olan sınıfların kayıp ağırlığı artırılarak modelin bu sınıflardaki hataları daha sert cezalandırması sağlanmıştır.
-
-### Sorun 2: Catastrophic Forgetting (Ön Bilginin Silinmesi)
-* **Analiz:** Ön eğitimli modellerin (ResNet, EfficientNet vb.) tüm ağırlıklarının en baştan serbestçe eğitilmesi, sınıflandırıcı katmandan gelen büyük rastgele gradyanların ön eğitimli gövdeyi (backbone) bozmasına sebep olmuştur.
-* **Çözüm (İki Aşamalı Eğitim - Feature Extraction & Fine-Tuning):**
-  1. **Özellik Çıkarımı (Feature Extraction):** Backbone gövde dondurulur (`freeze_backbone=True`). Sadece yeni eklenen sınıflandırıcı başlığı eğitilir. Bu aşamada ImageNet özellikleri korunur.
-  2. **İnce Ayar (Fine-Tuning):** Tüm model katmanlarının kilitleri çözülür. Başlangıç öğrenme oranı 10 kat düşürülerek (örn. $1\times10^{-5}$) tüm model yaprak görüntülerine göre ince ayar işlemine tabi tutulur.
-* Bu iki aşamalı eğitim akışı sayesinde, doğrulama doğruluğu tıkanma noktasını aşmış ve kararlı bir şekilde yükselmiştir.
-
----
-
-## 🚀 Kurulum ve Kullanım Kılavuzu
-
-### 1. Kütüphanelerin Kurulumu
-Projeyi çalıştırmadan önce gerekli kütüphaneleri sanal ortama yükleyin:
 ```bash
-# Sanal ortamı etkinleştirin (Windows için)
 .venv\Scripts\activate
-
-# Gerekli paketleri kurun
-pip install torch torchvision optuna matplotlib seaborn scikit-learn tqdm pandas pyyaml pillow
+pip install torch torchvision matplotlib seaborn scikit-learn tqdm pandas pyyaml pillow
 ```
 
-### 2. Pipeline Çalıştırma Komutları
+WSL içindeki sistem Python ortamında `torch` ve bazı paketler yüklü olmayabilir. Bu projede başarılı çalışma `.venv\Scripts\python.exe` ile doğrulandı.
 
-#### A. Veri Ön İşleme (Preprocessing)
-YOLO formatındaki bounding box bilgilerine göre yaprakları görüntülerden kırpar, sınıflarına göre klasörler altına toplar ve sınıf dağılım grafiğini (`plots/class_distribution.png`) oluşturur:
+---
+
+## Kullanım
+
+Veriyi yeniden kırpmak ve denetlemek:
+
 ```bash
-python main.py --preprocess
+python main.py --preprocess --audit_data
 ```
 
-#### B. Hiperparametre Optimizasyonu (Optuna)
-Yeni mimariler (`resnet50`, `efficientnet_b0`, `mobilenet_v3_large`) ve hiperparametreler arasında otomatik arama gerçekleştirir:
+ResNet34 iki aşamalı eğitim ve değerlendirme:
+
 ```bash
-python main.py --optimize --trials 10
+python main.py --model resnet34 --train --evaluate
 ```
 
-#### C. İki Aşamalı Model Eğitimi (Önerilen - Transfer Learning)
-Seçilen model (örn. `efficientnet_b0`) ile önce özellikleri çıkarır, ardından ince ayara geçer ve eğitim sonunda birleşik grafikleri kaydeder:
-```bash
-python main.py --model efficientnet_b0 --train --epochs 15 --fine_tune
-```
+Final önerilen EfficientNet-B0 checkpointini değerlendirme:
 
-*Not:* Normal tek aşamalı eğitim için `--fine_tune` parametresini kaldırabilirsiniz.
-
-#### D. Model Değerlendirme (Evaluation)
-Eğitilen en iyi model ağırlıklarını test seti üzerinde test eder. Hata matrisi, tahmin örnekleri grafiklerini kaydeder ve sınıflandırma raporunu (`plots/classification_report.txt`) üretir:
 ```bash
 python main.py --model efficientnet_b0 --evaluate
 ```
+
+Tek aşamalı eğitim istenirse:
+
+```bash
+python main.py --model resnet34 --train --single_stage
+```
+
+---
+
+## Çıktılar
+
+- En iyi ResNet34 checkpointi: `checkpoints/best_resnet34.pth`
+- ResNet34 ilk aşama checkpointi: `checkpoints/best_resnet34_stage1.pth`
+- Final sınıflandırma raporu: `plots/classification_report.txt`
+- Veri denetim raporu: `plots/data_audit_report.txt`
+- Eğitim grafiği: `plots/training_curves_resnet34.png`
+- Karşılaştırma grafiği: `plots/model_comparison.png`
+- Hata matrisi: `plots/confusion_matrix.png`
+- Tahmin örnekleri: `plots/prediction_samples.png`

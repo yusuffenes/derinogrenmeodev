@@ -57,7 +57,13 @@ class PlantCNN(nn.Module):
         x = self.fc(x)
         return x
 
-def get_transfer_model(num_classes=30, pretrained=True, freeze_backbone=False, backbone='resnet18'):
+def _resnet_head(in_features, num_classes, dropout_rate):
+    return nn.Sequential(
+        nn.Dropout(p=dropout_rate),
+        nn.Linear(in_features, num_classes)
+    )
+
+def get_transfer_model(num_classes=30, pretrained=True, freeze_backbone=False, backbone='resnet18', dropout_rate=0.3):
     """
     Önceden eğitilmiş ağırlıklara sahip transfer öğrenme modellerini yükler.
     Desteklenen modeller: resnet18, resnet34, resnet50, efficientnet_b0, mobilenet_v3_large
@@ -67,17 +73,17 @@ def get_transfer_model(num_classes=30, pretrained=True, freeze_backbone=False, b
         weights = models.ResNet18_Weights.DEFAULT if pretrained else None
         model = models.resnet18(weights=weights)
         num_features = model.fc.in_features
-        model.fc = nn.Linear(num_features, num_classes)
+        model.fc = _resnet_head(num_features, num_classes, dropout_rate)
     elif backbone == 'resnet34':
         weights = models.ResNet34_Weights.DEFAULT if pretrained else None
         model = models.resnet34(weights=weights)
         num_features = model.fc.in_features
-        model.fc = nn.Linear(num_features, num_classes)
+        model.fc = _resnet_head(num_features, num_classes, dropout_rate)
     elif backbone == 'resnet50':
         weights = models.ResNet50_Weights.DEFAULT if pretrained else None
         model = models.resnet50(weights=weights)
         num_features = model.fc.in_features
-        model.fc = nn.Linear(num_features, num_classes)
+        model.fc = _resnet_head(num_features, num_classes, dropout_rate)
     elif backbone == 'efficientnet_b0':
         weights = models.EfficientNet_B0_Weights.DEFAULT if pretrained else None
         model = models.efficientnet_b0(weights=weights)
@@ -133,5 +139,4 @@ if __name__ == '__main__':
         print(f"{bb} egitilebilir parametre grubu sayisi: {grad_params}")
         
     print("\nTum modeller basariyla dogrulandi!")
-
 
